@@ -228,7 +228,7 @@ async function compressImage(file, maxWidth = 1500) {
 async function recognizeText(imageData) {
   try {
     // Use Tesseract.js (already loaded via CDN)
-    const worker = await Tesseract.createWorker({
+    const worker = await Tesseract.createWorker("eng", 1, {
       logger: m => {
         if (m.status === 'recognizing text') {
           const progress = 30 + (m.progress * 60); // Math: 30% to 90%
@@ -236,9 +236,6 @@ async function recognizeText(imageData) {
         }
       }
     });
-    
-    await worker.loadLanguage('eng');
-    await worker.initialize('eng');
     
     // To improve MRZ accuracy, we can configure whitelist, but MRZ can have P, <, numbers, letters
     await worker.setParameters({
