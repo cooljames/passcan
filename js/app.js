@@ -1,4 +1,9 @@
 // ===== App State =====
+window.addEventListener('unhandledrejection', function(e) {
+  const msg = e.reason && e.reason.message ? e.reason.message : e.reason;
+  alert('OCR 로딩/실행 오류: ' + msg + '\n인터넷 연결을 확인하거나 새로고침 후 다시 시도해주세요.');
+});
+
 const AppState = {
   currentImageData: null,
   currentParsedData: null,
@@ -227,28 +232,47 @@ async function compressImage(file, maxWidth = 1500) {
 
 async function recognizeText(imageData) {
   try {
+    updateProgress(30, 'OCR 엔진 준비 중...');
+    
     // Use Tesseract.js (already loaded via CDN)
-    const worker = await Tesseract.createWorker("eng", 1, {
+    const worker = await Tesseract.createWorker('eng', 1, {
+      cacheMethod: 'none', // Prevent hanging from corrupted cache
       logger: m => {
+        console.log("OCR Log:", m);
         if (m.status === 'recognizing text') {
           const progress = 30 + (m.progress * 60); // Math: 30% to 90%
-          updateProgress(progress, '여권 정보 스캔 중...');
+          updateProgress(progress, '여권 정보 스캔 중... (' + Math.round(m.progress * 100) + '%)');
+        } else {
+          // Display the download/loading status to troubleshoot hang
+          let state = m.status;
+          if (state === 'loading tesseract core') state = '엔진 코어 로딩 중...';
+          else if (state === 'loading language traineddata') state = '언어 데이터 다운로드 중...';
+          else if (state === 'initializing tesseract') state = '엔진 초기화 중...';
+          else if (state === 'initialized tesseract') state = '초기화 완료!';
+          
+          let p = Math.round((m.progress || 0) * 100);
+          updateProgress(30, state + (p > 0 ? ' (' + p + '%)' : ''));
         }
       }
     });
     
-    // To improve MRZ accuracy, we can configure whitelist, but MRZ can have P, <, numbers, letters
+    updateProgress(30, 'OCR 설정 적용 중...');
+    // To improve MRZ accuracy, we can configure whitelist
     await worker.setParameters({
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
     });
     
+    updateProgress(30, '이미지 인식 시작...');
     const { data: { text } } = await worker.recognize(imageData);
+    
+    updateProgress(80, '워커 종료 중...');
     await worker.terminate();
     
     console.log("OCR Result:\n" + text);
     return text;
   } catch (err) {
-    throw new Error('OCR 처리 중 오류가 발생했습니다. ' + err.message);
+    console.error("Tesseract Error:", err);
+    throw new Error('OCR 엔진 초기화/실행 중 오류가 발생했습니다: ' + err.message);
   }
 }
 
