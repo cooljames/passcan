@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PassScan — 여권 스캐너</title>
+  <meta name="description" content="여권 사진을 스캔하여 정보를 자동 추출하고 Google 스프레드시트로 내보내는 스마트 웹 앱">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Animated background -->
+  <div class="bg-gradient"></div>
+  <div class="bg-noise"></div>
+  <div class="floating-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="18" rx="3"/>
+            <circle cx="12" cy="10" r="3"/>
+            <path d="M6 21v-1a6 6 0 0 1 12 0v1"/>
+            <line x1="2" y1="17" x2="22" y2="17"/>
+          </svg>
+        </div>
+        <span class="logo-text">PassScan</span>
+        <span class="logo-badge">Pro</span>
+      </div>
+      <div class="header-actions">
+        <button class="header-btn" id="historyBtn" title="스캔 기록">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span class="btn-label">기록</span>
+          <span class="history-count" id="historyCount">0</span>
+        </button>
+        <button class="header-btn" id="exportAllBtn" title="전체 내보내기">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span class="btn-label">내보내기</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-container">
+    <!-- Step Indicator -->
+    <div class="steps-bar">
+      <div class="step active" data-step="1">
+        <div class="step-number">1</div>
+        <span class="step-label">이미지 입력</span>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step" data-step="2">
+        <div class="step-number">2</div>
+        <span class="step-label">OCR 분석</span>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step" data-step="3">
+        <div class="step-number">3</div>
+        <span class="step-label">결과 확인</span>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step" data-step="4">
+        <div class="step-number">4</div>
+        <span class="step-label">내보내기</span>
+      </div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="content-grid">
+      <!-- Left Panel: Input -->
+      <section class="panel input-panel" id="inputPanel">
+        <div class="panel-header">
+          <h2>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            여권 이미지 입력
+          </h2>
+          <p class="panel-desc">드래그, 클릭, 붙여넣기(Ctrl+V) 또는 카메라로 촬영하세요</p>
+        </div>
+
+        <!-- Drop Zone -->
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-zone-inner">
+            <div class="drop-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <p class="drop-text">여권 이미지를 여기로 드래그하세요</p>
+            <p class="drop-subtext">
+              또는 <strong>클릭하여 파일 선택</strong>
+              <br>
+              <kbd>Ctrl</kbd> + <kbd>V</kbd> 로 붙여넣기도 가능
+            </p>
+            <div class="drop-formats">JPG, PNG, WEBP, BMP 지원</div>
+          </div>
+          <input type="file" id="fileInput" accept="image/*" hidden>
+        </div>
+
+        <!-- Camera Button -->
+        <button class="action-btn camera-btn" id="cameraBtn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          카메라로 촬영하기
+        </button>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+
+        <!-- Preview -->
+        <div class="preview-container" id="previewContainer">
+          <img id="previewImage" alt="여권 미리보기">
+          <button class="preview-close" id="previewClose" title="이미지 제거">✕</button>
+        </div>
+
+        <!-- MRZ Guide -->
+        <div class="mrz-guide">
+          <div class="guide-icon">💡</div>
+          <div class="guide-text">
+            <strong>팁:</strong> 여권 하단의 <em>MRZ 영역</em>(기계판독영역, 2줄의 영문/숫자)이 
+            선명하게 보이도록 촬영하면 인식률이 높아집니다.
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Results -->
+      <section class="panel result-panel" id="resultPanel">
+        <!-- Initial State -->
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="18" rx="3"/>
+              <circle cx="12" cy="10" r="3"/>
+              <path d="M6 21v-1a6 6 0 0 1 12 0v1"/>
+              <line x1="2" y1="17" x2="22" y2="17"/>
+            </svg>
+          </div>
+          <h3>여권 스캔 대기 중</h3>
+          <p>왼쪽에서 여권 이미지를 입력하면<br>분석 결과가 여기에 표시됩니다</p>
+        </div>
+
+        <!-- Processing State -->
+        <div class="processing-state hidden" id="processingState">
+          <div class="processing-animation">
+            <div class="scan-line"></div>
+            <div class="processing-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="18" rx="3"/>
+                <circle cx="12" cy="10" r="3"/>
+                <path d="M6 21v-1a6 6 0 0 1 12 0v1"/>
+              </svg>
+            </div>
+          </div>
+          <div class="progress-ring-container">
+            <svg class="progress-ring" viewBox="0 0 120 120">
+              <circle class="progress-ring-bg" cx="60" cy="60" r="54"/>
+              <circle class="progress-ring-fill" cx="60" cy="60" r="54" id="progressRing"/>
+            </svg>
+            <div class="progress-text" id="progressText">0%</div>
+          </div>
+          <p class="processing-label" id="processingLabel">OCR 엔진 초기화 중...</p>
+        </div>
+
+        <!-- Result State -->
+        <div class="result-state hidden" id="resultState">
+          <div class="result-header">
+            <div class="result-badge">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <div>
+              <h3>분석 완료</h3>
+              <p class="result-time" id="resultTime"></p>
+            </div>
+          </div>
+
+          <!-- Passport Card -->
+          <div class="passport-card" id="passportCard">
+            <div class="passport-header">
+              <div class="passport-type">PASSPORT</div>
+              <div class="passport-country" id="resCountryCode">---</div>
+            </div>
+            <div class="passport-photo-area">
+              <div class="passport-photo" id="passportPhoto">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="12" cy="8" r="4"/>
+                  <path d="M6 21v-2a6 6 0 0 1 12 0v2"/>
+                </svg>
+              </div>
+              <div class="passport-info-grid">
+                <div class="passport-field">
+                  <label>성명 / Name</label>
+                  <span id="resName">—</span>
+                </div>
+                <div class="passport-field">
+                  <label>국적 / Nationality</label>
+                  <span id="resNationality">—</span>
+                </div>
+                <div class="passport-field-row">
+                  <div class="passport-field">
+                    <label>여권번호 / No.</label>
+                    <span id="resPassportNo" class="mono">—</span>
+                  </div>
+                  <div class="passport-field">
+                    <label>성별 / Sex</label>
+                    <span id="resSex">—</span>
+                  </div>
+                </div>
+                <div class="passport-field-row">
+                  <div class="passport-field">
+                    <label>생년월일 / DOB</label>
+                    <span id="resDOB" class="mono">—</span>
+                  </div>
+                  <div class="passport-field">
+                    <label>만료일 / Expiry</label>
+                    <span id="resExpiry" class="mono">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="passport-mrz" id="resMRZ">
+              P&lt;KORXXXXXXXXXX&lt;&lt;XXXXXXXX&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;
+            </div>
+          </div>
+
+          <!-- Editable Fields -->
+          <div class="edit-section">
+            <h4>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              정보 수정
+            </h4>
+            <div class="edit-grid">
+              <div class="edit-field">
+                <label for="editName">성명</label>
+                <input type="text" id="editName" placeholder="홍길동 / HONG GILDONG">
+              </div>
+              <div class="edit-field">
+                <label for="editPassportNo">여권번호</label>
+                <input type="text" id="editPassportNo" placeholder="M12345678">
+              </div>
+              <div class="edit-field">
+                <label for="editNationality">국적</label>
+                <input type="text" id="editNationality" placeholder="REPUBLIC OF KOREA">
+              </div>
+              <div class="edit-field">
+                <label for="editSex">성별</label>
+                <select id="editSex">
+                  <option value="">선택</option>
+                  <option value="M">남 (M)</option>
+                  <option value="F">여 (F)</option>
+                </select>
+              </div>
+              <div class="edit-field">
+                <label for="editDOB">생년월일</label>
+                <input type="date" id="editDOB">
+              </div>
+              <div class="edit-field">
+                <label for="editExpiry">만료일</label>
+                <input type="date" id="editExpiry">
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="result-actions">
+            <button class="action-btn export-btn" id="exportBtn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
+                <line x1="3" y1="15" x2="21" y2="15"/>
+                <line x1="9" y1="3" x2="9" y2="21"/>
+              </svg>
+              Google 스프레드시트로 내보내기
+            </button>
+            <button class="action-btn reset-btn" id="resetBtn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="1 4 1 10 7 10"/>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+              </svg>
+              다른 여권 스캔
+            </button>
+          </div>
+        </div>
+
+        <!-- Export Success State -->
+        <div class="export-success hidden" id="exportSuccess">
+          <div class="success-animation">
+            <svg class="checkmark" viewBox="0 0 52 52">
+              <circle class="checkmark-circle" cx="26" cy="26" r="25" fill="none"/>
+              <path class="checkmark-check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+            </svg>
+          </div>
+          <h3>스프레드시트 저장 완료!</h3>
+          <p id="exportMessage">데이터가 성공적으로 저장되었습니다.</p>
+          <button class="action-btn reset-btn" id="exportResetBtn" style="margin-top: 16px;">
+            다른 여권 스캔하기
+          </button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- History Sidebar -->
+  <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+  <aside class="history-sidebar hidden" id="historySidebar">
+    <div class="sidebar-header">
+      <h3>📋 스캔 기록</h3>
+      <button class="sidebar-close" id="sidebarClose">✕</button>
+    </div>
+    <div class="sidebar-body" id="historyList">
+      <div class="empty-history">
+        <p>아직 스캔 기록이 없습니다</p>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="action-btn export-btn" id="exportAllFromSidebar" style="font-size: 0.85rem; padding: 10px;">
+        전체 스프레드시트로 내보내기
+      </button>
+      <button class="action-btn reset-btn" id="clearHistoryBtn" style="font-size: 0.85rem; padding: 10px; margin-top: 8px;">
+        기록 전체 삭제
+      </button>
+    </div>
+  </aside>
+
+  <!-- Toast Notification -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="js/mrz-parser.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
