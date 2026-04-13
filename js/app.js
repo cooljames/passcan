@@ -303,7 +303,7 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
 
   updateProgress(60, 'Gemini AI가 정보 추출 중...');
 
-  const response = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\${apiKey}\`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(requestBody)
@@ -311,7 +311,7 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
 
   if (!response.ok) {
     const errorData = await response.json();
-    throw new Error(\`API 요청 실패 (\${response.status}): \${errorData.error?.message || '알 수 없는 오류'}\`);
+    throw new Error(`API 요청 실패 (${response.status}): ${errorData.error?.message || '알 수 없는 오류'}`);
   }
 
   const data = await response.json();
@@ -325,7 +325,7 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
 
   try {
     // Clean up markdown just in case
-    const jsonString = textResponse.replace(/\`\`\`json/gi, '').replace(/\`\`\`/g, '').trim();
+    const jsonString = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(jsonString);
     
     return formatGeminiResult(parsed);
@@ -348,7 +348,7 @@ function formatGeminiResult(g) {
       issuingCountryName: COUNTRY_MAP[g.issuingCountry] || g.issuingCountry || '',
       surname: g.surname || '',
       givenNames: g.givenNames || '',
-      fullName: g.fullName || \`\${g.surname || ''} \${g.givenNames || ''}\`.trim(),
+      fullName: g.fullName || `${g.surname || ''} ${g.givenNames || ''}`.trim(),
       passportNo: g.passportNo || '',
       nationality: g.nationality || '',
       nationalityName: COUNTRY_MAP[g.nationality] || g.nationality || '',
