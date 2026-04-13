@@ -158,8 +158,21 @@ const MRZParser = (() => {
     // Names: everything after position 5
     const nameField = line1.substring(5);
     const nameParts = nameField.split('<<');
-    const surname = (nameParts[0] || '').replace(/</g, ' ').trim();
-    const givenNames = (nameParts.slice(1).join(' ') || '').replace(/</g, ' ').trim();
+    
+    let surname = (nameParts[0] || '').replace(/</g, ' ').trim();
+    let givenNames = (nameParts.slice(1).join(' ') || '').replace(/</g, ' ').trim();
+
+    // Clean up typical OCR noise for padding characters (usually < misread as L or K)
+    const cleanOcrNoise = (name) => {
+      if (!name) return '';
+      return name.split(/\s+/)
+                 .filter(word => !/^[LK]{3,}$/.test(word))
+                 .join(' ')
+                 .trim();
+    };
+
+    surname = cleanOcrNoise(surname);
+    givenNames = cleanOcrNoise(givenNames);
 
     // Line 2: PASSPORT_NUM(9) CHECK(1) NATIONALITY(3) DOB(6) CHECK(1) SEX(1) EXPIRY(6) CHECK(1) PERSONAL_NUM(14) CHECK(1) OVERALL_CHECK(1)
     const passportNo = line2.substring(0, 9).replace(/</g, '');
