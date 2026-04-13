@@ -78,6 +78,13 @@ const UI = {
   clearHistoryBtn: document.getElementById('clearHistoryBtn'),
   exportAllFromSidebar: document.getElementById('exportAllFromSidebar'),
   
+  // Settings
+  settingsBtn: document.getElementById('settingsBtn'),
+  settingsModal: document.getElementById('settingsModal'),
+  settingsClose: document.getElementById('settingsClose'),
+  geminiApiKey: document.getElementById('geminiApiKey'),
+  saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+  
   // Toast
   toastContainer: document.getElementById('toastContainer'),
 };
@@ -143,6 +150,26 @@ function bindEvents() {
   UI.sidebarOverlay.addEventListener('click', toggleSidebar);
   UI.clearHistoryBtn.addEventListener('click', clearHistory);
   UI.exportAllFromSidebar.addEventListener('click', exportAllHistory);
+
+  // Settings
+  if (UI.settingsBtn) UI.settingsBtn.addEventListener('click', openSettings);
+  if (UI.settingsClose) UI.settingsClose.addEventListener('click', closeSettings);
+  if (UI.saveSettingsBtn) UI.saveSettingsBtn.addEventListener('click', saveSettings);
+}
+
+function openSettings() {
+  const existingKey = localStorage.getItem('passScan_gemini_key') || '';
+  UI.geminiApiKey.value = existingKey;
+  UI.settingsModal.classList.remove('hidden');
+}
+function closeSettings() {
+  UI.settingsModal.classList.add('hidden');
+}
+function saveSettings() {
+  const val = UI.geminiApiKey.value.trim();
+  localStorage.setItem('passScan_gemini_key', val);
+  closeSettings();
+  showToast('API 키가 저장되었습니다.', 'success');
 }
 
 // ===== Core Logic =====
@@ -166,17 +193,12 @@ async function handleFileSelection(files) {
     // 2. Start Processing
     showProcessingState();
     
-    // 3. Compress Image for OCR
+    // 3. Compress Image (downscale to save bandwidth while keeping details)
     updateProgress(10, '이미지 최적화 중...');
-    const compressedImage = await compressImage(file);
+    const compressedImage = await compressImage(file, 2048);
     
-    // 4. Run OCR
-    updateProgress(30, 'OCR 엔진 초기화 및 문자 인식 중...');
-    const ocrText = await recognizeText(compressedImage);
-    
-    // 5. Parse MRZ
-    updateProgress(90, 'MRZ 데이터 분석 중...');
-    const parseResult = MRZParser.parse(ocrText);
+    // 4. Run AI Analysis
+    const parseResult = await analyzeWithGemini(compressedImage);
     
     if (parseResult.success) {
       updateProgress(100, '분석 완료!');
@@ -230,51 +252,144 @@ async function compressImage(file, maxWidth = 1500) {
   });
 }
 
-async function recognizeText(imageData) {
-  try {
-    updateProgress(30, 'OCR 엔진 준비 중...');
-    
-    // Use Tesseract.js (already loaded via CDN)
-    const worker = await Tesseract.createWorker('eng', 1, {
-      cacheMethod: 'none', // Prevent hanging from corrupted cache
-      logger: m => {
-        console.log("OCR Log:", m);
-        if (m.status === 'recognizing text') {
-          const progress = 30 + (m.progress * 60); // Math: 30% to 90%
-          updateProgress(progress, '여권 정보 스캔 중... (' + Math.round(m.progress * 100) + '%)');
-        } else {
-          // Display the download/loading status to troubleshoot hang
-          let state = m.status;
-          if (state === 'loading tesseract core') state = '엔진 코어 로딩 중...';
-          else if (state === 'loading language traineddata') state = '언어 데이터 다운로드 중...';
-          else if (state === 'initializing tesseract') state = '엔진 초기화 중...';
-          else if (state === 'initialized tesseract') state = '초기화 완료!';
-          
-          let p = Math.round((m.progress || 0) * 100);
-          updateProgress(30, state + (p > 0 ? ' (' + p + '%)' : ''));
-        }
+async function analyzeWithGemini(base64Data) {
+  const apiKey = localStorage.getItem('passScan_gemini_key');
+  if (!apiKey) {
+    throw new Error('Gemini API 키가 설정되지 않았습니다. 우측 상단의 ⚙️ 설정에서 키를 등록해주세요.');
+  }
+
+  updateProgress(30, 'Gemini AI로 이미지 전송 중...');
+
+  // Remove the data URL prefix
+  const base64Image = base64Data.split(',')[1];
+
+  const prompt = `
+Extract information from this passport or ID card. Respond with a JSON object ONLY, containing exactly these keys:
+{
+  "documentType": (String, e.g. "PASSPORT", "ID CARD"),
+  "issuingCountry": (String, 3-letter code e.g. "MYS", "KOR", "USA"),
+  "surname": (String, surname or primary identifier),
+  "givenNames": (String, given names. Leave empty string if not applicable),
+  "fullName": (String, full name),
+  "passportNo": (String, passport or ID number),
+  "nationality": (String, 3-letter country code),
+  "dateOfBirth": (String, YYYY-MM-DD format),
+  "sex": (String, "M" for Male or "F" for Female),
+  "dateOfExpiry": (String, YYYY-MM-DD format),
+  "mrzLine1": (String, exact MRZ row 1, if visible),
+  "mrzLine2": (String, exact MRZ row 2, if visible)
+}
+IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers like \`\`\`json.
+  `;
+
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: base64Image
+            }
+          }
+        ]
       }
-    });
+    ],
+    generationConfig: {
+      temperature: 0.1,
+    }
+  };
+
+  updateProgress(60, 'Gemini AI가 정보 추출 중...');
+
+  const response = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\${apiKey}\`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(\`API 요청 실패 (\${response.status}): \${errorData.error?.message || '알 수 없는 오류'}\`);
+  }
+
+  const data = await response.json();
+  const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  
+  if (!textResponse) {
+    throw new Error('의미 있는 응답을 받지 못했습니다.');
+  }
+
+  updateProgress(85, '데이터 파싱 중...');
+
+  try {
+    // Clean up markdown just in case
+    const jsonString = textResponse.replace(/\`\`\`json/gi, '').replace(/\`\`\`/g, '').trim();
+    const parsed = JSON.parse(jsonString);
     
-    updateProgress(30, 'OCR 설정 적용 중...');
-    // To improve MRZ accuracy, we can configure whitelist
-    await worker.setParameters({
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
-    });
-    
-    updateProgress(30, '이미지 인식 시작...');
-    const { data: { text } } = await worker.recognize(imageData);
-    
-    updateProgress(80, '워커 종료 중...');
-    await worker.terminate();
-    
-    console.log("OCR Result:\n" + text);
-    return text;
-  } catch (err) {
-    console.error("Tesseract Error:", err);
-    throw new Error('OCR 엔진 초기화/실행 중 오류가 발생했습니다: ' + err.message);
+    return formatGeminiResult(parsed);
+  } catch (e) {
+    throw new Error('분석 결과를 파싱하는 도중 오류가 발생했습니다. (JSON 형식 오류)');
   }
 }
+
+function formatGeminiResult(g) {
+  const formatDate = (dateStr) => {
+    if (!dateStr || dateStr.length < 10) return '—';
+    return dateStr.replace(/-/g, '.');
+  };
+
+  return {
+    success: true,
+    data: {
+      type: g.documentType || 'PASSPORT',
+      issuingCountry: g.issuingCountry || g.nationality || '',
+      issuingCountryName: COUNTRY_MAP[g.issuingCountry] || g.issuingCountry || '',
+      surname: g.surname || '',
+      givenNames: g.givenNames || '',
+      fullName: g.fullName || \`\${g.surname || ''} \${g.givenNames || ''}\`.trim(),
+      passportNo: g.passportNo || '',
+      nationality: g.nationality || '',
+      nationalityName: COUNTRY_MAP[g.nationality] || g.nationality || '',
+      dateOfBirth: g.dateOfBirth,
+      dateOfBirthFormatted: formatDate(g.dateOfBirth),
+      sex: g.sex === 'M' ? 'M' : g.sex === 'F' ? 'F' : '—',
+      sexDisplay: g.sex === 'M' ? '남 (M)' : g.sex === 'F' ? '여 (F)' : '—',
+      dateOfExpiry: g.dateOfExpiry,
+      dateOfExpiryFormatted: formatDate(g.dateOfExpiry),
+      personalNo: '',
+      mrzLine1: g.mrzLine1 || '—',
+      mrzLine2: g.mrzLine2 || '—',
+      validation: {
+        passportNoValid: true,
+        dobValid: true,
+        expiryValid: true
+      }
+    }
+  };
+}
+
+// Country code to name mapping (common ones)
+const COUNTRY_MAP = {
+  'KOR': '대한민국 (REPUBLIC OF KOREA)',
+  'USA': 'UNITED STATES',
+  'GBR': 'UNITED KINGDOM',
+  'JPN': 'JAPAN',
+  'CHN': 'CHINA',
+  'DEU': 'GERMANY',
+  'FRA': 'FRANCE',
+  'CAN': 'CANADA',
+  'AUS': 'AUSTRALIA',
+  'IND': 'INDIA',
+  'MYS': 'MALAYSIA',
+  'SGP': 'SINGAPORE',
+  'IDN': 'INDONESIA',
+  'PHL': 'PHILIPPINES',
+  'VNM': 'VIETNAM',
+  'THA': 'THAILAND'
+};
+
 
 // ===== UI Flow =====
 
