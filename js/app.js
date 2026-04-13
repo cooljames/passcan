@@ -90,8 +90,6 @@ const UI = {
   toastContainer: document.getElementById('toastContainer'),
 };
 
-// Apps Script Web App URL
-const APPS_SCRIPT_URL = 'https://script.google.com/a/macros/jbnu.ac.kr/s/AKfycbxw9rKOkgG5X0DErwF78fe1ulmtVNREUsOPJ1OGnOrRF9iY3PAUhse-jXfJzPyx9Fzxhg/exec';
 
 // ===== Initialization =====
 function init() {
@@ -143,7 +141,7 @@ function bindEvents() {
   UI.previewClose.addEventListener('click', resetInput);
   UI.resetBtn.addEventListener('click', resetApp);
   UI.exportResetBtn.addEventListener('click', resetApp);
-  UI.exportBtn.addEventListener('click', exportToGoogleSheets);
+  UI.exportBtn.addEventListener('click', exportToExcel);
   
   // Sidebar
   UI.historyBtn.addEventListener('click', toggleSidebar);
@@ -541,8 +539,7 @@ function resetUIState() {
 
 // ===== Export =====
 
-async function exportToGoogleSheets() {
-  // Get latest data from edit fields
+async function exportToExcel() {
   const exportData = {
     name: UI.editName.value.trim(),
     passport_num: UI.editPassportNo.value.trim(),
@@ -559,29 +556,28 @@ async function exportToGoogleSheets() {
   }
   
   UI.exportBtn.classList.add('loading');
-  UI.exportBtn.textContent = '내보내는 중...';
+  UI.exportBtn.textContent = '생성 중...';
   
   try {
-    // Determine method: The GAS might be expecting a GET with params or POST
-    // We send POST 'no-cors' by default as typical for Google Apps Script Web Apps when accessed from outside.
-    // NOTE: With 'no-cors', we cannot read the response body. We assume success if request completes.
-    
-    // Prepare params for a POST payload or GET
-    const searchParams = new URLSearchParams(exportData);
-    const urlWithParams = `${APPS_SCRIPT_URL}?action=savePassport&${searchParams.toString()}`;
-    
-    // If the GAS is expecting POST
-    await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: searchParams.toString()
-    });
-    
-    // We assume successful if no network error
     addToHistory(exportData);
+    
+    // Generate Excel file using SheetJS
+    const formattedData = [{
+      "성명 (Name)": exportData.name,
+      "여권번호 (Passport No)": exportData.passport_num,
+      "국적 (Nationality)": exportData.nationality,
+      "성별 (Sex)": exportData.sex,
+      "생년월일 (DOB)": exportData.dob,
+      "만료일 (Expiry)": exportData.expiry,
+      "스캔 일시 (Scanned At)": new Date(exportData.scanned_at).toLocaleString()
+    }];
+    
+    const ws = XLSX.utils.json_to_sheet(formattedData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "여권정보");
+    
+    // Trigger download
+    XLSX.writeFile(wb, `Passport_${exportData.name || 'Data'}.xlsx`);
     
     // Update Flow
     updateStep(4);
@@ -590,17 +586,16 @@ async function exportToGoogleSheets() {
     
   } catch (err) {
     console.error('Export Error:', err);
-    showToast('내보내기 실패. 네트워크 연결을 확인하세요.', 'error');
+    showToast('Excel 내보내기 중 문제가 발생했습니다.', 'error');
   } finally {
     UI.exportBtn.classList.remove('loading');
     UI.exportBtn.innerHTML = `
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-        <line x1="3" y1="9" x2="21" y2="9"/>
-        <line x1="3" y1="15" x2="21" y2="15"/>
-        <line x1="9" y1="3" x2="9" y2="21"/>
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
       </svg>
-      Google 스프레드시트로 내보내기
+      Excel 파일(.xlsx) 다운로드
     `;
   }
 }
@@ -700,29 +695,30 @@ async function exportAllHistory() {
     return;
   }
   
-  // As 'no-cors' fetch cannot batch effectively without server support, 
-  // you might want to create a CSV and download it locally for users, OR trigger multiple POSTs.
-  // For demo: Download CSV locally
-  
-  let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // With BOM for Excel
-  csvContent += "Name,Passport No,Nationality,Sex,DOB,Expiry,Scanned At\n";
-  
-  AppState.history.forEach(row => {
-    const date = new Date(row.scanned_at).toLocaleString();
-    const line = `"${row.name}","${row.passport_num}","${row.nationality}","${row.sex}","${row.dob}","${row.expiry}","${date}"`;
-    csvContent += line + "\n";
-  });
-  
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", `passScan_export_${new Date().getTime()}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  showToast('전체 기록이 CSV 파일로 다운로드되었습니다.', 'success');
-  toggleSidebar();
+  try {
+    const formattedData = AppState.history.map(row => ({
+      "성명 (Name)": row.name,
+      "여권번호 (Passport No)": row.passport_num,
+      "국적 (Nationality)": row.nationality,
+      "성별 (Sex)": row.sex,
+      "생년월일 (DOB)": row.dob,
+      "만료일 (Expiry)": row.expiry,
+      "스캔 일시 (Scanned At)": new Date(row.scanned_at).toLocaleString()
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(formattedData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "여권전체기록");
+    
+    // Trigger download
+    XLSX.writeFile(wb, `Passport_All_Records_${new Date().getTime()}.xlsx`);
+    showToast('전체 기록이 Excel 파일로 다운로드되었습니다.', 'success');
+    toggleSidebar();
+    
+  } catch (err) {
+    console.error('Export All Error:', err);
+    showToast('Excel 내보내기 중 문제가 발생했습니다.', 'error');
+  }
 }
 
 function toggleSidebar() {
