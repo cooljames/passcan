@@ -83,6 +83,7 @@ const UI = {
   settingsModal: document.getElementById('settingsModal'),
   settingsClose: document.getElementById('settingsClose'),
   geminiApiKey: document.getElementById('geminiApiKey'),
+  geminiModel: document.getElementById('geminiModel'),
   saveSettingsBtn: document.getElementById('saveSettingsBtn'),
   
   // Toast
@@ -159,7 +160,9 @@ function bindEvents() {
 
 function openSettings() {
   const existingKey = localStorage.getItem('passScan_gemini_key') || '';
+  const existingModel = localStorage.getItem('passScan_gemini_model') || 'auto';
   UI.geminiApiKey.value = existingKey;
+  if(UI.geminiModel) UI.geminiModel.value = existingModel;
   UI.settingsModal.classList.remove('hidden');
 }
 function closeSettings() {
@@ -167,9 +170,11 @@ function closeSettings() {
 }
 function saveSettings() {
   const val = UI.geminiApiKey.value.trim();
+  const modelVal = UI.geminiModel ? UI.geminiModel.value : 'auto';
   localStorage.setItem('passScan_gemini_key', val);
+  localStorage.setItem('passScan_gemini_model', modelVal);
   closeSettings();
-  showToast('API 키가 저장되었습니다.', 'success');
+  showToast('설정이 저장되었습니다.', 'success');
 }
 
 // ===== Core Logic =====
@@ -303,8 +308,13 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
 
   let response;
   let errorData;
+  const selectedModel = localStorage.getItem('passScan_gemini_model') || 'auto';
+  
   // Fallback models in case of high demand (503) or rate limits (429)
-  const models = ['gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+  let models = ['gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+  if (selectedModel !== 'auto') {
+    models = [selectedModel];
+  }
   
   for (const model of models) {
     updateProgress(60, `AI 분석 중... (${model})`);
