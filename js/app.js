@@ -301,17 +301,43 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
     }
   };
 
-  updateProgress(60, 'Gemini AI가 정보 추출 중...');
+  let response;
+  let errorData;
+  // Fallback models in case of high demand (503) or rate limits (429)
+  const models = ['gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+  
+  for (const model of models) {
+    updateProgress(60, `AI 분석 중... (${model})`);
+    try {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody)
-  });
+      if (response.ok) {
+        break; // Success
+      }
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(`API 요청 실패 (${response.status}): ${errorData.error?.message || '알 수 없는 오류'}`);
+      errorData = await response.json();
+      // If server is overloaded (503) or rate limited (429), try the next model
+      if (response.status === 503 || response.status === 429) {
+        console.warn(`${model} is overloaded (${response.status}), trying next model...`);
+        continue;
+      }
+      
+      // Stop and throw on hard errors (like bad API key)
+      throw new Error(`API 요청 실패 (${response.status}): ${errorData.error?.message || '알 수 없는 오류'}`);
+    } catch (err) {
+      if (model === models[models.length - 1]) {
+        throw err; // Re-throw if all models failed
+      }
+      console.warn(`Error with ${model}:`, err);
+    }
+  }
+
+  if (!response || !response.ok) {
+    throw new Error(`모든 AI 모델 서버가 혼잡 상태입니다. 잠시 후 다시 시도해주세요.`);
   }
 
   const data = await response.json();
