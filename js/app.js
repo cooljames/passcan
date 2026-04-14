@@ -196,24 +196,28 @@ async function handleFileSelection(files) {
     // 2. Start Processing
     showProcessingState();
     
-    // 3. Compress Image (downscale to save bandwidth while keeping details)
-    updateProgress(10, '이미지 최적화 중...');
-    const compressedImage = await compressImage(file, 2048);
+    // 3. Compress Image (downscale to save bandwidth)
+    setProgress(5, '이미지 최적화 중...');
+    const compressedImage = await compressImage(file, 1500);
+    setProgress(15, '이미지 준비 완료');
     
     // 4. Run AI Analysis
     const parseResult = await analyzeWithGemini(compressedImage);
     
     if (parseResult.success) {
-      updateProgress(100, '분석 완료!');
+      stopSmoothProgress();
+      setProgress(100, '분석 완료!');
       setTimeout(() => {
         showResultState(parseResult.data);
       }, 500);
     } else {
+      stopSmoothProgress();
       showToast(parseResult.error, 'error');
       resetUIState();
     }
     
   } catch (err) {
+    stopSmoothProgress();
     console.error(err);
     showToast(`오류가 발생했습니다: ${err.message}`, 'error');
     resetUIState();
@@ -243,7 +247,7 @@ async function compressImage(file, maxWidth = 1500) {
         
         ctx.drawImage(img, 0, 0, width, height);
         
-        resolve(canvas.toDataURL('image/jpeg', 0.9));
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
       };
       img.onerror = reject;
       img.src = e.target.result;
@@ -258,8 +262,6 @@ async function analyzeWithGemini(base64Data) {
   if (!apiKey) {
     throw new Error('Gemini API 키가 설정되지 않았습니다. 우측 상단의 ⚙️ 설정에서 키를 등록해주세요.');
   }
-
-  updateProgress(30, 'Gemini AI로 이미지 전송 중...');
 
   // Remove the data URL prefix
   const base64Image = base64Data.split(',')[1];
@@ -313,13 +315,16 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
   }
   
   for (const model of models) {
-    updateProgress(60, `AI 분석 중... (${model})`);
+    // Start smooth progress animation during API call
+    startSmoothProgress(20, 85, `AI 분석 중... (${model})`);
     try {
       response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
       });
+
+      stopSmoothProgress();
 
       if (response.ok) {
         break; // Success
@@ -335,6 +340,7 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
       // Stop and throw on hard errors (like bad API key)
       throw new Error(`API 요청 실패 (${response.status}): ${errorData.error?.message || '알 수 없는 오류'}`);
     } catch (err) {
+      stopSmoothProgress();
       if (model === models[models.length - 1]) {
         throw err; // Re-throw if all models failed
       }
@@ -353,7 +359,7 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
     throw new Error('의미 있는 응답을 받지 못했습니다.');
   }
 
-  updateProgress(85, '데이터 파싱 중...');
+  setProgress(90, '데이터 파싱 중...');
 
   try {
     // Clean up markdown just in case
@@ -460,15 +466,54 @@ function showProcessingState() {
   UI.resultState.classList.add('hidden');
   UI.exportSuccess.classList.add('hidden');
   UI.processingState.classList.remove('hidden');
-  updateProgress(0, '준비 중...');
+  _smoothInterval = null;
+  _currentProgress = 0;
+  setProgress(0, '준비 중...');
 }
 
-function updateProgress(percent, text) {
-  percent = Math.min(100, Math.max(0, percent));
+// ===== Smooth Progress System =====
+let _smoothInterval = null;
+let _currentProgress = 0;
+
+// Set progress to a fixed value instantly
+function setProgress(percent, text) {
+  _currentProgress = Math.min(100, Math.max(0, percent));
+  if (text) UI.processingLabel.textContent = text;
+  _renderProgress(_currentProgress);
+}
+
+// Animate progress smoothly from current position toward targetPercent
+// Uses easing: fast at start, slows down as it approaches target
+function startSmoothProgress(fromPercent, targetPercent, label) {
+  stopSmoothProgress();
+  _currentProgress = fromPercent;
+  if (label) UI.processingLabel.textContent = label;
+  _renderProgress(_currentProgress);
+
+  _smoothInterval = setInterval(() => {
+    if (_currentProgress < targetPercent) {
+      const remaining = targetPercent - _currentProgress;
+      // Logarithmic easing: moves ~2-3% of remaining distance each tick
+      const increment = Math.max(0.15, remaining * 0.03);
+      _currentProgress = Math.min(targetPercent, _currentProgress + increment);
+      _renderProgress(_currentProgress);
+    }
+    if (_currentProgress >= targetPercent) {
+      clearInterval(_smoothInterval);
+      _smoothInterval = null;
+    }
+  }, 120);
+}
+
+function stopSmoothProgress() {
+  if (_smoothInterval) {
+    clearInterval(_smoothInterval);
+    _smoothInterval = null;
+  }
+}
+
+function _renderProgress(percent) {
   UI.progressText.textContent = `${Math.round(percent)}%`;
-  UI.processingLabel.textContent = text;
-  
-  // Update ring stroke offset
   const circumference = 339.292; // 2 * pi * 54
   const offset = circumference - (percent / 100) * circumference;
   UI.progressRing.style.strokeDashoffset = offset;
