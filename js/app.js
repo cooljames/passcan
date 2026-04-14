@@ -1,7 +1,7 @@
 // ===== App State =====
 window.addEventListener('unhandledrejection', function(e) {
   const msg = e.reason && e.reason.message ? e.reason.message : e.reason;
-  alert('OCR 로딩/실행 오류: ' + msg + '\n인터넷 연결을 확인하거나 새로고침 후 다시 시도해주세요.');
+  alert('AI 분석 오류: ' + msg + '\n인터넷 연결을 확인하거나 새로고침 후 다시 시도해주세요.');
 });
 
 const AppState = {
@@ -241,8 +241,6 @@ async function compressImage(file, maxWidth = 1500) {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         
-        // Improve contrast somewhat before OCR
-        ctx.filter = 'contrast(1.2) grayscale(1)';
         ctx.drawImage(img, 0, 0, width, height);
         
         resolve(canvas.toDataURL('image/jpeg', 0.9));
@@ -308,8 +306,8 @@ IMPORTANT: Provide valid JSON ONLY, without any markdown formatting wrappers lik
   let errorData;
   const selectedModel = localStorage.getItem('passScan_gemini_model') || 'auto';
   
-  // Fallback models in case of high demand (503) or rate limits (429)
-  let models = ['gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+  // Fallback models: 3.1 Flash → 3.1 Flash-Lite → 2.5 Flash
+  let models = ['gemini-3.1-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
   if (selectedModel !== 'auto') {
     models = [selectedModel];
   }
@@ -404,7 +402,7 @@ function formatGeminiResult(g) {
   };
 }
 
-// Country code to name mapping (common ones)
+// Country code to name mapping
 const COUNTRY_MAP = {
   'KOR': '대한민국 (REPUBLIC OF KOREA)',
   'USA': 'UNITED STATES',
@@ -416,12 +414,19 @@ const COUNTRY_MAP = {
   'CAN': 'CANADA',
   'AUS': 'AUSTRALIA',
   'IND': 'INDIA',
+  'BRA': 'BRAZIL',
+  'RUS': 'RUSSIAN FEDERATION',
+  'ITA': 'ITALY',
+  'ESP': 'SPAIN',
+  'MEX': 'MEXICO',
   'MYS': 'MALAYSIA',
   'SGP': 'SINGAPORE',
   'IDN': 'INDONESIA',
   'PHL': 'PHILIPPINES',
   'VNM': 'VIETNAM',
-  'THA': 'THAILAND'
+  'THA': 'THAILAND',
+  'TWN': 'TAIWAN',
+  'NZL': 'NEW ZEALAND',
 };
 
 
